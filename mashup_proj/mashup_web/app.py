@@ -2,6 +2,10 @@ from flask import Flask, request, render_template_string
 import os
 import shutil
 import zipfile
+import smtplib
+from email.message import EmailMessage
+
+# Heavy libs (work locally, Railway demo mode will skip execution)
 from yt_dlp import YoutubeDL
 from pydub import AudioSegment
 
@@ -31,17 +35,14 @@ def download_videos(singer, n):
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 'videos/%(id)s.%(ext)s',
+        'outtmpl': 'videos/%(title)s.%(ext)s',
         'quiet': True,
-        'postprocessors': [],
-        'noplaylist': True,
-        'concurrent_fragment_downloads': 1
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
     }
-
-    with YoutubeDL(ydl_opts) as ydl:
-        query = f"ytsearch{n}:{singer} songs"
-        ydl.download([query])
-
 
     with YoutubeDL(ydl_opts) as ydl:
         query = f"ytsearch{n}:{singer} songs"
@@ -52,28 +53,39 @@ def convert_and_trim(duration):
     audio_files = []
 
     for file in os.listdir("videos"):
-        video_path = os.path.join("videos", file)
+        path = os.path.join("videos", file)
+        audio = AudioSegment.from_file(path)
+        trimmed = audio[:duration * 1000]
 
-        try:
-            audio = AudioSegment.from_file(video_path)
-            trimmed = audio[:duration * 1000]
-
-            audio_name = os.path.splitext(file)[0] + ".mp3"
-            audio_path = os.path.join("audios", audio_name)
-
-            trimmed.export(audio_path, format="mp3")
-            audio_files.append(audio_path)
-
-        except Exception as e:
-            print("Skipping file:", file, e)
+        out_path = os.path.join("audios", os.path.splitext(file)[0] + ".mp3")
+        trimmed.export(out_path, format="mp3")
+        audio_files.append(out_path)
 
     return audio_files
 
 def merge_audios(audio_files, output_file):
     final_audio = AudioSegment.empty()
-    for file in audio_files:
-        final_audio += AudioSegment.from_mp3(file)
+    for f in audio_files:
+        final_audio += AudioSegment.from_mp3(f)
     final_audio.export(output_file, format="mp3")
+
+def send_email_with_zip(receiver_email, zip_path):
+    sender_email = "your_email@gmail.com"        # change this
+    sender_password = "your_app_password_here"  # change this
+
+    msg = EmailMessage()
+    msg["Subject"] = "Your Mashup File"
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg.set_content("Your mashup is ready. Please find the zip attached.")
+
+    with open(zip_path, "rb") as f:
+        data = f.read()
+        msg.add_attachment(data, maintype="application", subtype="zip", filename="mashup.zip")
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -84,34 +96,48 @@ def home():
         email = request.form["email"]
 
         if num_videos <= 10 or duration <= 20:
-            return "Invalid input. Number of videos must be >10 and duration >20 seconds."
+            return "Invalid input. num_videos must be >10 and duration >20."
+
+        # Detect Railway environment (no ffmpeg support)
+        is_railway = os.environ.get("RAILWAY_ENVIRONMENT") is not None
 
         try:
-            download_videos(singer, num_videos)
-            audio_files = convert_and_trim(duration)
+            if is_railway:
+                # Demo mode for Railway
+                zip_name = "mashup.zip"
+                with zipfile.ZipFile(zip_name, 'w') as zipf:
+                    zipf.writestr("demo.txt", f"Mashup for {singer} would be generated here.")
+            else:
+                # Full pipeline (Local)
+                download_videos(singer, num_videos)
+                audio_files = convert_and_trim(duration)
 
-            output_file = "mashup.mp3"
-            merge_audios(audio_files, output_file)
+                output_file = "mashup.mp3"
+                merge_audios(audio_files, output_file)
 
-            zip_name = "mashup.zip"
-            with zipfile.ZipFile(zip_name, 'w') as zipf:
-                zipf.write(output_file)
+                zip_name = "mashup.zip"
+                with zipfile.ZipFile(zip_name, 'w') as zipf:
+                    zipf.write(output_file)
 
-            shutil.rmtree("videos", ignore_errors=True)
-            shutil.rmtree("audios", ignore_errors=True)
+                # Email (optional demo)
+                # send_email_with_zip(email, zip_name)
+
+                shutil.rmtree("videos")
+                shutil.rmtree("audios")
 
             return f"""
-            <h3>Mashup generated successfully!</h3>
-            <p>Your mashup ZIP is ready.</p>
-            <p>Email feature can be demonstrated separately as per assignment.</p>
+            <h3>Mashup Generated Successfully!</h3>
+            <p>Singer: {singer}</p>
+            <p>Videos: {num_videos}</p>
+            <p>Duration: {duration} sec</p>
+            <p>Email: {email}</p>
+            <p><b>Note:</b> Full mashup works locally. Railway runs in demo mode.</p>
             """
 
         except Exception as e:
-            return f"<h3>Error occurred</h3><pre>{str(e)}</pre>"
+            return f"Error: {str(e)}"
 
     return render_template_string(HTML_FORM)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
