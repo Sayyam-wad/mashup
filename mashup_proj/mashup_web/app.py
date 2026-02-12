@@ -5,6 +5,10 @@ import zipfile
 from yt_dlp import YoutubeDL
 from pydub import AudioSegment
 
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
 app = Flask(__name__)
 
 HTML_FORM = """
@@ -113,3 +117,4 @@ def home():
 
 if __name__ == "__main__":
     app.run()
+
