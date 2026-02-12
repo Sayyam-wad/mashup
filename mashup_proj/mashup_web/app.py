@@ -2,9 +2,6 @@ from flask import Flask, request, render_template_string
 import os
 import shutil
 import zipfile
-import re
-import smtplib
-from email.message import EmailMessage
 from yt_dlp import YoutubeDL
 from pydub import AudioSegment
 
@@ -28,11 +25,6 @@ HTML_FORM = """
 </body>
 </html>
 """
-
-EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
-
-def is_valid_email(email):
-    return re.match(EMAIL_REGEX, email)
 
 def download_videos(singer, n):
     os.makedirs("videos", exist_ok=True)
@@ -69,8 +61,8 @@ def convert_and_trim(duration):
             trimmed.export(audio_path, format="mp3")
             audio_files.append(audio_path)
 
-        except:
-            pass
+        except Exception as e:
+            print("Skipping file:", file, e)
 
     return audio_files
 
@@ -80,21 +72,6 @@ def merge_audios(audio_files, output_file):
         final_audio += AudioSegment.from_mp3(file)
     final_audio.export(output_file, format="mp3")
 
-def send_email(receiver_email):
-    msg = EmailMessage()
-    msg["Subject"] = "Your Mashup is Ready"
-    msg["From"] = os.environ.get("SENDER_EMAIL")
-    msg["To"] = receiver_email
-    msg.set_content("Your mashup is attached as a ZIP file.")
-
-    with open("mashup.zip", "rb") as f:
-        msg.add_attachment(f.read(), maintype="application", subtype="zip", filename="mashup.zip")
-
-    server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-    server.login(os.environ.get("SENDER_EMAIL"), os.environ.get("EMAIL_PASSWORD"))
-    server.send_message(msg)
-    server.quit()
-
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
@@ -103,11 +80,8 @@ def home():
         duration = int(request.form["duration"])
         email = request.form["email"]
 
-        if not is_valid_email(email):
-            return "Invalid email address."
-
         if num_videos <= 10 or duration <= 20:
-            return "Invalid input. num_videos must be >10 and duration >20."
+            return "Invalid input. Number of videos must be >10 and duration >20 seconds."
 
         try:
             download_videos(singer, num_videos)
@@ -120,20 +94,20 @@ def home():
             with zipfile.ZipFile(zip_name, 'w') as zipf:
                 zipf.write(output_file)
 
-            send_email(email)
-
             shutil.rmtree("videos", ignore_errors=True)
             shutil.rmtree("audios", ignore_errors=True)
 
-            return """
+            return f"""
             <h3>Mashup generated successfully!</h3>
-            <p>The ZIP file has been sent to your email.</p>
+            <p>Your mashup ZIP is ready.</p>
+            <p>Email feature can be demonstrated separately as per assignment.</p>
             """
 
         except Exception as e:
-            return f"Error: {str(e)}"
+            return f"<h3>Error occurred</h3><pre>{str(e)}</pre>"
 
     return render_template_string(HTML_FORM)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
