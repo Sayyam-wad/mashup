@@ -1,7 +1,5 @@
 from flask import Flask, request, render_template_string
 import os
-import time
-import re
 
 app = Flask(__name__)
 
@@ -24,39 +22,24 @@ HTML_FORM = """
 </html>
 """
 
-def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
-
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
-        singer = request.form.get("singer", "").strip()
-        num_videos = int(request.form.get("num_videos", 0))
-        duration = int(request.form.get("duration", 0))
-        email = request.form.get("email", "").strip()
+        singer = request.form["singer"]
+        num_videos = int(request.form["num_videos"])
+        duration = int(request.form["duration"])
+        email = request.form["email"]
 
-        if not singer:
-            return "Singer name is required."
-
-        if num_videos <= 10:
-            return "Number of videos must be greater than 10."
-
-        if duration <= 20:
-            return "Duration must be greater than 20 seconds."
-
-        if not is_valid_email(email):
-            return "Invalid email address."
-
-        # Simulate processing
-        time.sleep(2)
+        if num_videos <= 10 or duration <= 20:
+            return "Invalid input. num_videos must be >10 and duration >20."
 
         return f"""
-        <h3>Mashup request received successfully</h3>
-        <p><b>Singer:</b> {singer}</p>
-        <p><b>Number of Videos:</b> {num_videos}</p>
-        <p><b>Clip Duration:</b> {duration} seconds</p>
-        <p><b>Email:</b> {email}</p>
-        <p>Your mashup is being processed and will be delivered shortly.</p>
+        <h3>Mashup Request Received</h3>
+        <p>Singer: {singer}</p>
+        <p>Number of videos: {num_videos}</p>
+        <p>Clip duration: {duration} seconds</p>
+        <p>Email: {email}</p>
+        <p>Your mashup is being processed and will be delivered via email.</p>
         """
 
     return render_template_string(HTML_FORM)
