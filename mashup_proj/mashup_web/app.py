@@ -31,14 +31,17 @@ def download_videos(singer, n):
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 'videos/%(title)s.%(ext)s',
+        'outtmpl': 'videos/%(id)s.%(ext)s',
         'quiet': True,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'postprocessors': [],
+        'noplaylist': True,
+        'concurrent_fragment_downloads': 1
     }
+
+    with YoutubeDL(ydl_opts) as ydl:
+        query = f"ytsearch{n}:{singer} songs"
+        ydl.download([query])
+
 
     with YoutubeDL(ydl_opts) as ydl:
         query = f"ytsearch{n}:{singer} songs"
@@ -111,3 +114,4 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
